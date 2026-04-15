@@ -139,11 +139,11 @@ export default function Home() {
                   type="text"
                   className="chat-input"
                   placeholder="Ask about dental services or booking..."
-                  value={input}
+                  value={input || ""}
                   onChange={handleInputChange}
                   disabled={isLoading}
                 />
-                <button type="submit" className="send-button" disabled={!input.trim() || isLoading}>
+                <button type="submit" className="send-button" disabled={!(input || "").trim() || isLoading}>
                   <Send size={18} style={{ marginLeft: "2px" }} />
                 </button>
               </form>

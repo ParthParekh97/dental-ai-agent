@@ -1,68 +1,54 @@
-// @ts-nocheck
-import { google } from "@ai-sdk/google";
-import { streamText, tool } from "ai";
-import { z } from "zod";
-import { getServices, getDentists, checkAvailability, bookAppointment } from "@/lib/db";
-
-// Allow streaming responses up to 30 seconds
-export const maxDuration = 30;
+import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  try {
+    const { messages } = await req.json();
+    const lastMessage = messages[messages.length - 1];
 
-  const result = streamText({
-    model: google("gemini-1.5-pro"),
-    system: `You are a helpful, professional AI assistant for a premier dental clinic. 
-Your job is to answer patient questions about our services, provide information about our dentists, and help patients check availability and book appointments.
-Be polite, concise, and professional. 
-If a patient asks to book an appointment, ALWAYS use the 'check_availability' tool first to find open slots before confirming a time.
-DO NOT invent available times or dentist names. Only use information retrieved from your tools.
-If a user tries to book an appointment with a dentist who is not in the system, tell them you cannot find that dentist.
-Important: When making a booking, collect the patient's name and phone number before booking.`,
-    messages,
-    tools: {
-      getServices: tool({
-        description: "Get a list of dental services offered by the clinic.",
-        parameters: z.object({}),
-        execute: async (_args) => {
-          return await getServices();
-        },
-      }),
-      
-      getDentists: tool({
-        description: "Get information about the dentists working at the clinic, including their specialties and bios.",
-        parameters: z.object({}),
-        execute: async (_args) => {
-          return await getDentists();
-        },
-      }),
-      
-      checkAvailability: tool({
-        description: "Check available appointment slots. You can optionally filter by dentist name or date (YYYY-MM-DD format).",
-        parameters: z.object({
-          dentistName: z.string().optional().describe("First or last name of the dentist (e.g., 'Jenkins', 'Sarah')"),
-          dateStr: z.string().optional().describe("Date to check availability for in YYYY-MM-DD format"),
-        }),
-        execute: async ({ dentistName, dateStr }: { dentistName?: string, dateStr?: string }) => {
-          return await checkAvailability(dentistName, dateStr);
-        },
-      }),
+    if (!lastMessage || lastMessage.role !== "user") {
+      return NextResponse.json({ error: "Invalid message format" }, { status: 400 });
+    }
 
-      bookAppointment: tool({
-        description: "Book an appointment for a patient. Must provide patient name, phone, dentist name, date, and time.",
-        parameters: z.object({
-          patientName: z.string().describe("Full name of the patient"),
-          patientPhone: z.string().describe("Phone number of the patient"),
-          dentistName: z.string().describe("Name of the dentist to book with"),
-          dateStr: z.string().describe("Date of the appointment in YYYY-MM-DD format"),
-          timeStr: z.string().describe("Time of the appointment in HH:MM format (24-hour clock)"),
-        }),
-        execute: async ({ patientName, patientPhone, dentistName, dateStr, timeStr }: { patientName: string, patientPhone: string, dentistName: string, dateStr: string, timeStr: string }) => {
-          return await bookAppointment(patientName, patientPhone, dentistName, dateStr, timeStr);
-        },
-      }),
-    },
-  });
+    // Switched to production URL. 
+    // n8n requires this URL to be used when the workflow is marked as "Active" in the top right corner.
+    const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/dental-ai-chat";
 
-  return result.toTextStreamResponse();
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chatInput: lastMessage.content,
+        // sessionID helps the n8n memory keep track of the conversation
+        sessionId: "user-session-1234"
+      }),
+    });
+
+    if (!response.ok) {
+        let errorDetails = "";
+        try {
+           const errJson = await response.json();
+           errorDetails = JSON.stringify(errJson);
+        } catch(e) {}
+        throw new Error(`n8n responded with status: ${response.status}. Details: ${errorDetails}`);
+    }
+
+    const data = await response.json();
+    
+    // n8n Webhook returns the AI's response in data.output 
+    const botText = data.output || "I'm sorry, I received an empty response from the AI Agent.";
+
+    // Return the response back to your beautiful Next.js UI
+    return new Response(botText, {
+        headers: { "Content-Type": "text/plain" }
+    });
+
+  } catch (error: any) {
+    console.error("n8n Webhook Error:", error);
+    return NextResponse.json(
+      { error: "Failed to reach AI Agent", details: error.message },
+      { status: 500 }
+    );
+  }
 }

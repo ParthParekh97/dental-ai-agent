@@ -1,12 +1,14 @@
 "use client";
 
-import { useChat } from "@ai-sdk/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, CalendarHeart, ShieldCheck, User } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Send, Bot, CalendarHeart, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
+  const [messages, setMessages] = useState<Array<{id: string, role: string, content: string}>>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -14,8 +16,99 @@ export default function Home() {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    setMounted(true);
+    // Add waitlist message on mount only
+    if (messages.length === 0) {
+      setMessages([
+        {
+          id: "welcome-msg",
+          role: "assistant",
+          content: "Hello! Welcome to Apex Dental Studio. How can I assist you today?\n\n[BUTTON: Book Appointment] [BUTTON: Reschedule] [BUTTON: Clinic Hours & Info] [BUTTON: Other]"
+        }
+      ]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      scrollToBottom();
+    }
+  }, [messages, mounted]);
+
+  const sendTextToAPI = async (textToSend: string) => {
+    if (!textToSend.trim()) return;
+
+    const userMessage = { id: Date.now().toString(), role: "user", content: textToSend };
+    setMessages(prev => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Send the complete message history including the new user message
+        body: JSON.stringify({ messages: [...messages, userMessage] })
+      });
+
+      const botText = await response.text();
+      const botMessage = { id: (Date.now() + 1).toString(), role: "assistant", content: botText };
+      
+      setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      const errorMessage = { id: (Date.now() + 1).toString(), role: "assistant", content: "I am having trouble connecting to n8n. Please ensure the webhook is active!" };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendTextToAPI(input);
+  };
+
+  const handleButtonClick = (buttonText: string) => {
+    sendTextToAPI(buttonText);
+  };
+
+  // Parses raw LLM text. If it spots [BUTTON: Something], extracts it into a separate flex container below the text!
+  const renderMessageContent = (content: string) => {
+    const buttonRegex = /\[BUTTON:\s*(.*?)\s*\]/g;
+    const buttons: string[] = [];
+    
+    // Extract all button labels and remove them from the main text
+    const cleanedText = content.replace(buttonRegex, (match, p1) => {
+      buttons.push(p1);
+      return ""; // remove the tag from the text
+    });
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <span>{cleanedText.trim()}</span>
+        
+        {buttons.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+            {buttons.map((btnLabel, i) => (
+              <button 
+                key={i} 
+                onClick={() => handleButtonClick(btnLabel)} 
+                className="ai-suggestion-button"
+                disabled={isLoading}
+              >
+                {btnLabel}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main className="full-screen-center">
@@ -77,7 +170,6 @@ export default function Home() {
           style={{ display: "flex", justifyContent: "center", alignItems: "center" }}
         >
           <div className="chat-container glass-panel">
-            {/* Header */}
             <div className="chat-header">
               <div className="chat-avatar">
                 <Bot size={24} />
@@ -88,38 +180,20 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Messages */}
             <div className="chat-messages">
               <AnimatePresence initial={false}>
-                {messages.length === 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0 }} 
-                    animate={{ opacity: 1 }} 
-                    className="message-bubble message-bot"
-                  >
-                    Hello! Welcome to Apex Dental Studio. How can I help you today?
-                  </motion.div>
-                )}
-                {messages.map((m) => (
+                {mounted && messages.map((m) => (
                   <motion.div
                     key={m.id}
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     className={`message-bubble ${m.role === "user" ? "message-user" : "message-bot"}`}
                   >
-                    {m.content}
-                    
-                    {m.toolInvocations && m.toolInvocations.map((toolInvoc, idx) => (
-                        <div key={idx} className="tool-indicator">
-                          🛠️ {toolInvoc.toolName === 'checkAvailability' ? 'Checking calendar...' : 
-                              toolInvoc.toolName === 'bookAppointment' ? 'Finalizing booking...' : 
-                              `Running ${toolInvoc.toolName}...`}
-                        </div>
-                    ))}
+                    {renderMessageContent(m.content)}
                   </motion.div>
                 ))}
                 
-                {isLoading && messages[messages.length - 1]?.role === "user" && (
+                {isLoading && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="message-bubble message-bot">
                     <div className="typing-indicator">
                       <div className="typing-dot"></div>
@@ -132,18 +206,17 @@ export default function Home() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
             <div className="chat-input-area">
               <form onSubmit={handleSubmit} className="chat-form">
                 <input
                   type="text"
                   className="chat-input"
-                  placeholder="Ask about dental services or booking..."
-                  value={input || ""}
-                  onChange={handleInputChange}
+                  placeholder="Type your message..."
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
                   disabled={isLoading}
                 />
-                <button type="submit" className="send-button" disabled={!(input || "").trim() || isLoading}>
+                <button type="submit" className="send-button" disabled={!input.trim() || isLoading}>
                   <Send size={18} style={{ marginLeft: "2px" }} />
                 </button>
               </form>

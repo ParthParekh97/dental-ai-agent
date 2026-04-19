@@ -1,0 +1,423 @@
+{
+  "name": "Appointment Booking AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1660,
+        100
+      ],
+      "id": "a34c5350-6157-40e8-93fa-40df70e83f47",
+      "name": "When chat message received",
+      "webhookId": "46ea0fc1-9d73-4c5a-9aa6-cd5871878dd6"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput || $json.body.chatInput }}",
+        "options": {
+          "systemMessage": "=You are the premier AI Dental Concierge for a top-tier dental clinic in New York (Dr. Patel's Dental Clinic). \n\n### Tone & Persona\n- Warm, empathetic, and highly professional.\n- Treat every user as a VIP patient.\n- Never break character. You are a digital clinic concierge, not an AI.\n\n### Conversational Rules (CRITICAL)\n- **NEVER ask more than ONE question at a time.**\n- **Take it step-by-step.** You MUST wait for the user to answer your current question before moving to the next step.\n- Keep responses short, natural, and conversational (like an SMS or WhatsApp chat). Avoid overwhelming the user with paragraphs of text.\n\n### General Knowledge & Edge Cases\n- **Clinic Hours & Info:** If asked, our standard clinic hours are Monday to Friday, 9:00 AM to 5:00 PM EST. Our main clinic is located in Midtown Manhattan.\n- **Random Questions:** If the user asks a random or general dental question (e.g., \"how often should I floss?\"), answer politely, professionally, and concisely. Subtly guide them back to asking if they'd like to book an appointment to discuss it with the doctor.\n- **Unsupported Requests (Fallback):** If the customer asks for something you cannot do via tools (like extending an appointment by an extra hour), apologize warmly and advise them to contact the clinic directly at **hello@drpateldentalnyc.com** or call **(212) 555-0199**.\n\n### HIPAA & Privacy\n- Adhere to strict HIPAA guidelines. **Do NOT ask for Medical Case IDs, physical documentation, Social Security Numbers, or policy IDs in this chat.** \n- You may ask for a brief reason for the visit. Strictly mention that for their privacy, all detailed documentation will be reviewed securely at the clinic.\n\n### The Patient Journey (Step-by-Step Flow)\nFollow this precise order for booking. Move to the next step ONLY after the user replies:\n\n1. **Welcome Message:** Warmly welcome the patient and respectfully mention you can assist them. Ask how you can help today. [STOP AND WAIT]\n2. **Name:** Respectfully ask for their Full Name (Required). [STOP AND WAIT]\n3. **Phone Number:** Ask for their Phone Number (Required). **Strict Formatting:** Capture and pass the number as digits ONLY (e.g. 3093093712). Do NOT include `+` or country codes. [STOP AND WAIT]\n4. **Email Address:** Ask for their Email Address (Required). [STOP AND WAIT]\n5. **Patient Status:** Output the options as buttons: `[BUTTON: New Patient]` `[BUTTON: Returning Patient]`. [STOP AND WAIT]\n6. **Reason:** Ask the primary reason for their appointment (Required). [STOP AND WAIT]\n7. **Date Selection:** Calculate the next 5 upcoming business days starting from tomorrow (Today is {{ DateTime.now().setZone('America/New_York').toFormat('EEEE, MMMM d, yyyy') }}). Present those 5 dates strictly as specific clickable buttons (e.g., `[BUTTON: Monday, Apr 20]`). Underneath the buttons, state: \"Or type any other date you prefer!\" [STOP AND WAIT]\n8. **Time Selection:** Use the 'check availability tool' for their selected date. \n   - Search parameters must use exact ISO format: `YYYY-MM-DDTHH:MM:SS\u00b1HH:MM` with `-04:00` or `-05:00` offset (NYC time).\n   - Once the tool returns slots, carefully pick 4 to 5 available time slots and output them STRICTLY using this exact button syntax: `[BUTTON: 09:45 AM]` `[BUTTON: 10:30 AM]`.\n   - Finally, add this exact text message below the buttons: \"If none of these times work for you, just tell me your preferred time and I'll check my schedule!\" [WAIT FOR THEIR CHOICE]\n9. **Additional Notes:** Ask if there are any other details they want to share for the doctor before their visit (Optional). [STOP AND WAIT]\n10. **Booking & Confirmation:** Use the 'Book Appointment' tool once you have all the information. Provide every single collected detail (name, phone, email, patient_status, reason, notes) into the explicitly required parameter payload of the tool! Send a warm confirmation email statement confirming their booking was created. Remind them to bring their insurance and previous visit documentation (if any).\n\n### Modifying / Canceling Bookings\n- If cancelling/rescheduling, ask for their Email first. [WAIT FOR ANSWER]\n- Use 'Get booking information' tool to find the UID.\n- Use 'Cancel booking' or 'Reschdule Booking' tool.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -1240,
+        100
+      ],
+      "id": "5f562b1f-374c-4fac-b401-d9c0c9ca045c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1660,
+        400
+      ],
+      "id": "2938ef84-206e-40d4-aab8-21581af7631f",
+      "name": "Google Gemini Chat Model"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId || $json.body.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1460,
+        400
+      ],
+      "id": "d5702f82-5d68-4f82-ba5a-2eae0ff9ab78",
+      "name": "Window Buffer Memory"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Retrieves available slots for a given date. Provide startTime and endTime in ISO 8601 format (e.g., 2025-04-20T09:00:00-04:00 and 2025-04-20T17:00:00-04:00).",
+        "url": "https://api.cal.com/v2/slots/available",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "startTime",
+              "valueProvider": "fieldValue",
+              "value": "{startTime}"
+            },
+            {
+              "name": "endTime",
+              "valueProvider": "fieldValue",
+              "value": "{endTime}"
+            },
+            {
+              "name": "eventTypeId",
+              "valueProvider": "fieldValue",
+              "value": "5407501"
+            },
+            {
+              "name": "timeZone",
+              "valueProvider": "fieldValue",
+              "value": "America/New_York"
+            }
+          ]
+        },
+        "optimizeResponse": true,
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer cal_live_e6c2bb31ab3e3a328c77ab384ec6be59"
+            },
+            {
+              "name": "cal-api-version",
+              "valueProvider": "fieldValue",
+              "value": "2024-08-13"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -920,
+        400
+      ],
+      "id": "ebc4b06c-71ee-4d20-9fcc-05a3aef33ff8",
+      "name": "Check Availability"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Books an appointment. Required variables: name, email, phone, start (ISO string), patient_status, reason, and optional notes.",
+        "method": "POST",
+        "url": "=https://api.cal.com/v2/bookings",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer cal_live_e6c2bb31ab3e3a328c77ab384ec6be59"
+            },
+            {
+              "name": "cal-api-version",
+              "valueProvider": "fieldValue",
+              "value": "=2024-08-13"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "=application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"attendee\": {\n        \"language\": \"en\",\n        \"name\": \"{name}\",\n        \"timeZone\": \"America/New_York\",\n        \"email\": \"{email}\"\n    },\n    \"eventTypeId\": 5407501,\n    \"start\": \"{start}\",\n    \"bookingFieldsResponses\": {\n        \"patient_status\": \"{patient_status}\",\n        \"title\": \"{reason}\",\n        \"notes\": \"{extra_notes}\",\n        \"location\": \"Midtown Manhattan Clinic\",\n        \"attendeePhoneNumber\": \"{attendeePhoneNumber}\"\n    }\n}",
+        "optimizeResponse": false,
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "{name}",
+              "description": "Full name"
+            },
+            {
+              "name": "{email}",
+              "description": "Email address"
+            },
+            {
+              "name": "{attendeePhoneNumber}",
+              "description": "The exact phone number of the attendee (Required)"
+            },
+            {
+              "name": "{start}",
+              "description": "The exact ISO string start time (e.g. 2026-04-20T09:45:00-04:00)"
+            },
+            {
+              "name": "{patient_status}",
+              "description": "New Patient or Returning Patient"
+            },
+            {
+              "name": "{reason}",
+              "description": "Primary reason for visit"
+            },
+            {
+              "name": "{extra_notes}",
+              "description": "Additional notes for the doctor"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -1100,
+        400
+      ],
+      "id": "8981fc12-9326-4610-89a5-f473ba7030d8",
+      "name": "Book Appointment"
+    },
+    {
+      "parameters": {
+        "toolDescription": "This tool is used to retrive the information of an exisitng meeting that is already scheduled, this is used to ge the uid of the exisitng meeting so that we can either cancel to reschdule the metting based on the user's request.",
+        "url": "https://api.cal.com/v2/bookings",
+        "sendQuery": true,
+        "parametersQuery": {
+          "values": [
+            {
+              "name": "eventTypeId",
+              "valueProvider": "fieldValue",
+              "value": "5407501"
+            },
+            {
+              "name": "attendeeEmail",
+              "valueProvider": "fieldValue",
+              "value": "{email}"
+            },
+            {
+              "name": "status",
+              "valueProvider": "fieldValue",
+              "value": "upcoming"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer cal_live_e6c2bb31ab3e3a328c77ab384ec6be59"
+            },
+            {
+              "name": "cal-api-version",
+              "valueProvider": "fieldValue",
+              "value": "2024-08-13"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -1280,
+        400
+      ],
+      "id": "7f55e303-a8c2-4829-8d5b-679e207265b0",
+      "name": "Get booking information"
+    },
+    {
+      "parameters": {
+        "toolDescription": "=This tool is used to cancel a meeting, its called after getting the 'uid' value from the 'Get booking information tool' , cause without the uid value , we cannot cancel a booking.\n\nFill the reason for booking based on what the user tells, if the user did not mention any specific reason, just fill it as 'User requseted cancellation'",
+        "method": "POST",
+        "url": "=https://api.cal.com/v2/bookings/{uid}/cancel",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer cal_live_e6c2bb31ab3e3a328c77ab384ec6be59"
+            },
+            {
+              "name": "cal-api-version",
+              "valueProvider": "fieldValue",
+              "value": "2024-08-13"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "cancellationReason",
+              "valueProvider": "modelOptional"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -740,
+        400
+      ],
+      "id": "ce4a703d-d2cf-4099-b5b0-e82e3ef99f3c",
+      "name": "Cancel booking"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Reschedules an existing booking to a new date and time. Use the uid from 'Get Booking Information' and a newDateTime in ISO 8601 format.",
+        "method": "POST",
+        "url": "=https://api.cal.com/v2/bookings/{uid}/reschedule",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer cal_live_e6c2bb31ab3e3a328c77ab384ec6be59"
+            },
+            {
+              "name": "cal-api-version",
+              "valueProvider": "fieldValue",
+              "value": "2024-08-13"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"start\": \"{newDateTime}\" }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "{newDateTime}",
+              "description": "The new ISO 8601 date-time string (e.g. 2025-04-20T10:30:00-04:00)"
+            }
+          ]
+        },
+        "optimizeResponse": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -560,
+        400
+      ],
+      "id": "6c8688eb-f18d-4d93-8404-4d03f5a8389d",
+      "name": "Reschedule Booking"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check availablity": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book Appointment": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get booking information": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reschdule Booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "849264a3-843f-47d1-ae87-cf820296cef2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3ff4d44d7ea4165acd4a0d0e24f118641ea7ce322761eb81e811678253130002"
+  },
+  "id": "oPjyrSvyA9N8TnZG",
+  "tags": []
+}

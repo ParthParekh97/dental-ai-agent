@@ -7,7 +7,8 @@ import { useEffect, useRef, useState } from "react";
 export default function Home() {
   const [messages, setMessages] = useState<Array<{id: string, role: string, content: string}>>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [sessionId, setSessionId] = useState<string>("");
   const [mounted, setMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -17,6 +18,7 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
+    setSessionId(`session-${Date.now()}`); // Generate a completely fresh memory context on every page load
     // Add waitlist message on mount only
     if (messages.length === 0) {
       setMessages([
@@ -47,8 +49,8 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Send the complete message history including the new user message
-        body: JSON.stringify({ messages: [...messages, userMessage] })
+        // Send the complete message history and the dynamic session ID
+        body: JSON.stringify({ messages: [...messages, userMessage], sessionId })
       });
 
       const botText = await response.text();

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { messages } = await req.json();
+    const { messages, sessionId } = await req.json();
     const lastMessage = messages[messages.length - 1];
 
     if (!lastMessage || lastMessage.role !== "user") {
@@ -20,8 +20,8 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         chatInput: lastMessage.content,
-        // sessionID helps the n8n memory keep track of the conversation
-        sessionId: "user-session-1234"
+        // sessionID dynamically generated on frontend so refreshing clears the cache
+        sessionId: sessionId || "demo-session-default"
       }),
     });
 

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
     // Switched to production URL. 
     // n8n requires this URL to be used when the workflow is marked as "Active" in the top right corner.
-    const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/dental-working-ai-chat";
+    const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/dental-next-version";
 
     const response = await fetch(N8N_WEBHOOK_URL, {
       method: "POST",

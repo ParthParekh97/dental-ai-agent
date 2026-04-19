@@ -73,20 +73,24 @@ export default function Home() {
     sendTextToAPI(buttonText);
   };
 
-  // Parses raw LLM text. If it spots [BUTTON: Something], extracts it into a separate flex container below the text!
+  // Parses and renders raw LLM text with proper line breaks, but checks for [BUTTON: ] tags to render actionable options.
   const renderMessageContent = (content: string) => {
-    const buttonRegex = /\[BUTTON:\s*(.*?)\s*\]/g;
-    const buttons: string[] = [];
+    // Regex matches [BUTTON: text] and optionally removes leading bullets (- or 1.) and trailing newlines
+    const buttonRegex = /(?:-\s*|\d+\.\s*)?\[BUTTON:\s*(.*?)\s*\]\s*\n?/g;
+    let buttons: string[] = [];
     
-    // Extract all button labels and remove them from the main text
-    const cleanedText = content.replace(buttonRegex, (match, p1) => {
+    // Extract all button labels and remove them from the main text cleanly
+    let cleanedText = content.replace(buttonRegex, (match, p1) => {
       buttons.push(p1);
-      return ""; // remove the tag from the text
+      return ""; // completely erase the bullet and tag
     });
+    
+    // Clean up empty lines that might have been left over
+    cleanedText = cleanedText.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <span>{cleanedText.trim()}</span>
+        <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{cleanedText.trim()}</span>
         
         {buttons.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
